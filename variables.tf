@@ -66,55 +66,111 @@ variable "ec2_instance_ami" {
 variable "ec2_instance_type" {
   description = "ec2 instance type"
   type        = string
-  default     = "t2.micro"
+  default     = "m5a.xlarge"
 }
 
-
-# db engine
-variable "db_engine" {
-  description = "db engine"
+#DynamoDB Configuration
+variable "name" {
   type        = string
-  default     = "mysql"
-}
-
-
-# db engine version
-variable "db_engine_version" {
-  description = "db engine version"
-  type        = string
-  default     = "5.7"
-}
-
-
-# db name
-variable "db_name" {
   description = "ekyc-db"
-  type        = string
-  default     = "test_db"
 }
 
-
-# db instance class
-variable "db_instance_class" {
-  description = "db instance class"
+variable "billing_mode" {
   type        = string
-  default     = "db.t2.micro"
+  description = "PROVISIONED or PAY_PER_REQUEST, check https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/dynamodb_table"
 }
 
-
-# database username variable
-variable "db_username" {
-  description = "admin"
+variable "hash_key" {
   type        = string
-  sensitive   = true
+  description = "DynamoDB primary partition key"
 }
 
-
-# database password variable
-variable "db_password" {
-  description = "password"
+variable "range_key" {
   type        = string
-  sensitive   = true
+  description = "DynamoDB primary sort key"
+  default     = null
+}
+
+variable "write_capacity" {
+  type        = number
+  description = "Write Capacity Units (WCUs), check https://calculator.aws/#/createCalculator/amazonDynamoDB"
+  default     = null
+}
+
+variable "read_capacity" {
+  type        = number
+  description = "Read Capacity Units (WCUs), check https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughput.html"
+  default     = null
+}
+
+variable "attributes" {
+  type        = list(map(string))
+  description = <<EOL
+    DynamoDB Table attributes, hash_key and sort_key (if given) should be defined here.
+    JSON tfvars Example
+    "attributes": [
+        {
+            "name": "HashKeyName",
+            "type": "S"
+        },
+        {
+            "name": "RangeKeyName",
+            "type": "B"
+        }
+    ]
+    EOL
+}
+
+variable "point_in_time_recovery" {
+  type        = bool
+  description = "Allow Point in time recovery of backed up table, check https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/PointInTimeRecovery.html"
+  default     = false
+}
+
+variable "tags" {
+  type        = map(string)
+  description = <<EOL
+    Tags for the table.
+    JSON tfvars Example
+    "tags": {
+        "Name": "MyTable",
+        "ENVIRONEMNT": "DEV"
+    }
+    EOL
+  default     = {}
+}
+
+variable "replicas" {
+  type        = list(string)
+  description = "AWS regions for Global DynamoDB Tables V2, check https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html"
+  default     = []
+}
+
+variable "global_secondary_indexes" {
+  type = list(object({
+    name               = string
+    hash_key           = string
+    range_key          = string
+    write_capacity     = number
+    read_capacity      = number
+    projection_type    = string
+    non_key_attributes = list(string)
+  }))
+  description = <<EOL
+    Seettings for GLobal Secondary Index in the create DynamoDB Table(s), check https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html
+    If you are using Global Tables and you have defined replicas variable, check https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables_reqs_bestpractices.html
+    JSON tfvars Example
+    "global_secondary_indexes": {
+        "name": "ekyc",
+        "hash_key": "Title"
+        "range_key": "Rating"
+        "write_capacity": 10
+        "read_capacity": 10
+        "projection_type": "INCLUDE"
+        "non_key_attributes": ["Authors"] 
+    }
+    EOL
+  default     = []
 }
 
 # S3 Configuration

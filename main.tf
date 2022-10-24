@@ -10,23 +10,23 @@ terraform {
 }
 
 provider "aws" {
-  access_key = ""
-  secret_key = ""
+  AWS_access_key = ""
+  AWS_secret_key = ""
   region = "ap-southeast-1"
 }
 
 # VPC BLOCK
 
-resource "aws_vpc" "custom_vpc" {
+resource "aws_vpc" "ekyc_vpc" {
   cidr_block = var.vpc_cidr
 
   tags = {
-    name = "custom_vpc"
+    name = "ekyc_vpc"
   }
 }
 
 resource "aws_subnet" "public_subnet1" {
-  vpc_id            = aws_vpc.custom_vpc.id
+  vpc_id            = aws_vpc.ekyc_vpc.id
   cidr_block        = var.public_subnet1
   availability_zone = var.az1
 
@@ -37,7 +37,7 @@ resource "aws_subnet" "public_subnet1" {
 
 # public subnet 2
 resource "aws_subnet" "public_subnet2" {
-  vpc_id            = aws_vpc.custom_vpc.id
+  vpc_id            = aws_vpc.ekyc_vpc.id
   cidr_block        = var.public_subnet2
   availability_zone = var.az2
 
@@ -48,7 +48,7 @@ resource "aws_subnet" "public_subnet2" {
 
 # private subnet 1
 resource "aws_subnet" "private_subnet1" {
-  vpc_id            = aws_vpc.custom_vpc.id
+  vpc_id            = aws_vpc.ekyc_vpc.id
   cidr_block        = var.private_subnet1
   availability_zone = var.az1
 
@@ -59,7 +59,7 @@ resource "aws_subnet" "private_subnet1" {
 
 # private subnet 2
 resource "aws_subnet" "private_subnet2" {
-  vpc_id            = aws_vpc.custom_vpc.id
+  vpc_id            = aws_vpc.ekyc_vpc.id
   cidr_block        = var.private_subnet2
   availability_zone = var.az2
 
@@ -70,7 +70,7 @@ resource "aws_subnet" "private_subnet2" {
 
 # creating internet gateway 
 resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.custom_vpc.id
+  vpc_id = aws_vpc.ekyc_vpc.id
 
   tags = {
     name = "igw"
@@ -79,7 +79,7 @@ resource "aws_internet_gateway" "igw" {
 
 # creating route table
 resource "aws_route_table" "rt" {
-  vpc_id = aws_vpc.custom_vpc.id
+  vpc_id = aws_vpc.ekyc_vpc.id
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
@@ -126,7 +126,7 @@ resource "aws_route_table_association" "private_rt2" {
 resource "aws_security_group" "web_sg" {
   name        = "ekyc_sg"
   description = "allow inbound HTTP traffic"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = aws_vpc.ekyc_vpc.id
 
   # HTTP from vpc
   ingress {
@@ -154,7 +154,7 @@ resource "aws_security_group" "web_sg" {
 resource "aws_security_group" "webserver_sg" {
   name        = "ekycserver_sg"
   description = "allow inbound traffic from ALB"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = aws_vpc.ekyc_vpc.id
 
   # allow inbound traffic from web
   ingress {
@@ -180,7 +180,7 @@ resource "aws_security_group" "webserver_sg" {
 resource "aws_security_group" "database_sg" {
   name        = "database_sg"
   description = "allow inbound traffic from ALB"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = aws_vpc.ekyc_vpc.id
 
   # allow traffic from ALB 
   ingress {
@@ -232,29 +232,49 @@ resource "aws_instance" "ec2_2" {
   }
 }
 
-# RDS subnet group
-resource "aws_db_subnet_group" "default" {
-  name       = "main"
-  subnet_ids = [aws_subnet.private_subnet1.id, aws_subnet.private_subnet2.id]
+#DynamoDB COnfiguration
+resource "aws_dynamodb_table" "ekyc" {
+  name           = var.name
+  billing_mode   = var.billing_mode
+  hash_key       = var.hash_key
+  range_key      = var.range_key
+  write_capacity = var.write_capacity
+  read_capacity  = var.read_capacity
 
-  tags = {
-    name = "rds_subnet_g"
+  dynamic "attribute" {
+    for_each = var.attributes
+    content {
+      name = attribute.value["name"]
+      type = attribute.value["type"]
+    }
   }
-}
 
-# RDS database on postgresql engine
-resource "aws_db_instance" "test_db" {
-  allocated_storage      = 20
-  db_subnet_group_name   = aws_db_subnet_group.default.id
-  engine                 = var.db_engine
-  engine_version         = var.db_engine_version
-  instance_class         = var.db_instance_class
-  multi_az               = true
-  db_name                = var.db_name
-  username               = var.db_username
-  password               = var.db_password
-  skip_final_snapshot    = true
-  vpc_security_group_ids = [aws_security_group.database_sg.id]
+  dynamic "global_secondary_index" {
+    for_each = var.global_secondary_indexes
+    content {
+      name               = global_secondary_index.value["name"]
+      hash_key           = global_secondary_index.value["hash_key"]
+      range_key          = lookup(global_secondary_index.value, "range_key", null)
+      write_capacity     = lookup(global_secondary_index.value, "write_capacity", null)
+      read_capacity      = lookup(global_secondary_index.value, "read_capacity", null)
+      projection_type    = global_secondary_index.value["projection_type"]
+      non_key_attributes = lookup(global_secondary_index.value, "non_key_attributes", null)
+    }
+  }
+
+  dynamic "replica" {
+    for_each = var.replicas
+    content {
+      region_name = replica.value["name"]
+    }
+  }
+
+  point_in_time_recovery {
+    enabled = var.point_in_time_recovery
+  }
+
+  tags = var.tags
+
 }
 
 # S3 configuration
@@ -480,7 +500,7 @@ resource "aws_lb_target_group" "external_target_g" {
   name     = "ekyc-target-group"
   port     = 80
   protocol = "HTTP"
-  vpc_id   = aws_vpc.custom_vpc.id
+  vpc_id   = aws_vpc.ekyc_vpc.id
 }
 
 resource "aws_lb_target_group_attachment" "ec2_1_target_g" {
